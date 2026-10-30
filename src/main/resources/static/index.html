@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>知行课堂 · 管理端</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: "Microsoft YaHei", Arial, sans-serif; background: #f5f6f8; color: #333; }
+        .login-box { width: 340px; margin: 110px auto; background: #fff; padding: 28px; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.08); }
+        .login-box h2 { margin: 0 0 20px; font-size: 20px; text-align: center; }
+        .login-box input { width: 100%; padding: 10px; margin-bottom: 12px; border: 1px solid #dcdfe6; border-radius: 4px; }
+        .login-box button { width: 100%; padding: 10px; border: 0; border-radius: 4px; background: #67c23a; color: #fff; font-size: 15px; cursor: pointer; }
+        .tip { color: #999; font-size: 12px; text-align: center; margin-top: 8px; }
+        .error { color: #f56c6c; font-size: 13px; min-height: 18px; }
+        #main { display: none; }
+        header { background: #2f4050; color: #fff; padding: 0 20px; height: 52px; line-height: 52px; display: flex; justify-content: space-between; }
+        header .right { cursor: pointer; font-size: 14px; }
+        .tabs { padding: 12px 20px; }
+        .tabs button { padding: 8px 18px; border: 1px solid #dcdfe6; background: #fff; cursor: pointer; }
+        .tabs button.active { background: #67c23a; color: #fff; border-color: #67c23a; }
+        .panel { margin: 0 20px 20px; background: #fff; border-radius: 6px; padding: 16px; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th, td { padding: 10px 8px; border-bottom: 1px solid #ebeef5; text-align: left; }
+        th { background: #fafafa; font-weight: 600; }
+        .btn { padding: 4px 10px; border: 1px solid #dcdfe6; background: #fff; border-radius: 3px; cursor: pointer; font-size: 13px; }
+        .btn.primary { border-color: #409eff; color: #409eff; }
+        .btn.danger { border-color: #f56c6c; color: #f56c6c; }
+        .stat { display: flex; gap: 16px; }
+        .stat div { flex: 1; background: #fff; padding: 18px; border-radius: 6px; text-align: center; }
+        .stat b { display: block; font-size: 26px; color: #67c23a; margin-bottom: 6px; }
+        .empty { color: #999; text-align: center; padding: 30px 0; }
+    </style>
+</head>
+<body>
+
+<div class="login-box" id="loginBox">
+    <h2>知行课堂 · 管理端</h2>
+    <input id="username" placeholder="用户名" value="admin">
+    <input id="password" type="password" placeholder="密码" value="123456">
+    <div class="error" id="loginError"></div>
+    <button onclick="login()">登 录</button>
+    <div class="tip">测试账号 admin / 123456</div>
+</div>
+
+<div id="main">
+    <header>
+        <span>知行课堂 · 管理端</span>
+        <span class="right" onclick="logout()">退出登录</span>
+    </header>
+    <div class="tabs">
+        <button id="tabCourse" class="active" onclick="switchTab('course')">课程管理</button>
+        <button id="tabStat" onclick="switchTab('stat')">今日数据</button>
+    </div>
+
+    <div class="panel" id="panelCourse">
+        <table>
+            <thead><tr><th>ID</th><th>课程</th><th>讲师</th><th>章节数</th><th>状态</th><th>操作</th></tr></thead>
+            <tbody id="courseBody"></tbody>
+        </table>
+    </div>
+
+    <div class="panel" id="panelStat" style="display:none">
+        <div class="stat">
+            <div><b id="statEnroll">0</b>今日选课数</div>
+            <div><b id="statStudent">0</b>今日新增学员</div>
+            <div><b id="statReview">0</b>今日评价数</div>
+            <div><b id="statAvg">0</b>全站平均分</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let token = localStorage.getItem('school_token') || '';
+
+    async function api(path, method = 'GET', body = null) {
+        const resp = await fetch(path, {
+            method,
+            headers: { 'Content-Type': 'application/json', 'token': token },
+            body: body ? JSON.stringify(body) : null
+        });
+        if (resp.status === 401) { logout(); throw new Error('登录已过期'); }
+        const json = await resp.json();
+        if (json.code !== 200) { alert(json.msg || '请求失败'); throw new Error(json.msg); }
+        return json.data;
+    }
+
+    async function login() {
+        const username = document.getElementById('username').value.trim();
+        const password = document.getElementById('password').value;
+        try {
+            const resp = await fetch('/admin/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const json = await resp.json();
+            if (json.code !== 200) {
+                document.getElementById('loginError').innerText = json.msg || '登录失败';
+                return;
+            }
+            token = json.data.token;
+            localStorage.setItem('school_token', token);
+            enterMain();
+        } catch (e) {
+            document.getElementById('loginError').innerText = '网络错误，后端启动了吗？';
+        }
+    }
+
+    function logout() {
+        token = '';
+        localStorage.removeItem('school_token');
+        document.getElementById('main').style.display = 'none';
+        document.getElementById('loginBox').style.display = 'block';
+    }
+
+    function enterMain() {
+        document.getElementById('loginBox').style.display = 'none';
+        document.getElementById('main').style.display = 'block';
+        switchTab('course');
+    }
+
+    function switchTab(tab) {
+        ['course', 'stat'].forEach(t => {
+            document.getElementById('panel' + t[0].toUpperCase() + t.slice(1)).style.display = (t === tab) ? 'block' : 'none';
+            document.getElementById('tab' + t[0].toUpperCase() + t.slice(1)).className = (t === tab) ? 'active' : '';
+        });
+        if (tab === 'course') loadCourses();
+        if (tab === 'stat') loadStat();
+    }
+
+    async function loadCourses() {
+        const data = await api('/admin/course/page?page=1&pageSize=20');
+        const body = document.getElementById('courseBody');
+        if (!data.records.length) { body.innerHTML = '<tr><td colspan="6" class="empty">还没有课程</td></tr>'; return; }
+        const rows = [];
+        for (const c of data.records) {
+            let chapterCount = '-';
+            try {
+                const chapters = await api('/admin/chapter/list?courseId=' + c.id);
+                chapterCount = chapters.length;
+            } catch (e) { /* 忽略单门课的章节查询失败 */ }
+            rows.push(`<tr>
+                <td>${c.id}</td>
+                <td>${c.title}</td>
+                <td>${c.teacherName || '-'}</td>
+                <td>${chapterCount}</td>
+                <td>${c.status === 1 ? '上架' : '下架'}</td>
+                <td>
+                    <button class="btn ${c.status === 1 ? 'danger' : 'primary'}"
+                        onclick="toggleCourse(${c.id}, ${c.status === 1 ? 0 : 1})">
+                        ${c.status === 1 ? '下架' : '上架'}
+                    </button>
+                </td>
+            </tr>`);
+        }
+        body.innerHTML = rows.join('');
+    }
+
+    async function toggleCourse(id, status) {
+        await api(`/admin/course/status/${status}?id=${id}`, 'POST');
+        loadCourses();
+    }
+
+    async function loadStat() {
+        const s = await api('/admin/statistics');
+        document.getElementById('statEnroll').innerText = s.enrollCount;
+        document.getElementById('statStudent').innerText = s.studentCount;
+        document.getElementById('statReview').innerText = s.reviewCount;
+        document.getElementById('statAvg').innerText = s.avgRating;
+    }
+
+    if (token) {
+        api('/admin/course/page?page=1&pageSize=1').then(enterMain).catch(logout);
+    }
+</script>
+</body>
+</html>
